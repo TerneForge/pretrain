@@ -31,7 +31,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, set_seed
 from transformers.integrations.deepspeed import deepspeed_config
 
 from train_utils import LogCallback, PyTorchProfilerCallback, print_rank0
-from yulanmini_trainer import YuLanMiniTrainer
+from trainer import YuLanMiniTrainer
 
 LOCAL_RANK = int(os.getenv("LOCAL_RANK", "0"))
 RANK = int(os.getenv("RANK", "0"))
@@ -40,7 +40,7 @@ WORLD_SIZE = int(os.getenv("WORLD_SIZE", "1"))
 
 @dataclass
 class ModelArguments:
-    model_name_or_path: Optional[str] = field(default="")
+    model_name_or_path: Optional[str] = field(default="microsoft/phi-1_5")
     flash_attention: Optional[bool] = field(default=True)
 
     # z-loss
@@ -69,34 +69,13 @@ class TrainingArguments(transformers.TrainingArguments):
     )
     log_dir: str = field(default=None)
     profile: bool = field(default=False)
-    # # wsd scheduler
-    # use_wsd: bool = field(default=True)
-    # start_lambda: float = field(
-    #     default=0, metadata={"help": "LR scheduler start percent"})
-    # end_lambda: float = field(default=1,
-    #                           metadata={"help": "LR scheduler end percent"})
-    # start_global_step: float = field(
-    #     default=None, metadata={"help": "LR scheduler start step"})
-    # end_global_step: float = field(default=None,
-    #                                metadata={"help": "LR scheduler end step"})
-    # wsd_style: str = field(
-    #     default="",
-    #     metadata={"help": "The style of the WSD loss, cos or linear."})
-    # curriculum learning
-    # add_rms_norm: bool = field(default=False,
-    #                            metadata={"help": "Choose models with 'RMSNorm' when resuming."})
-    # update_trained_steps_and_epochs: bool = field(  # whether to start a new curriculum phase
-    #     default=False,
-    #     metadata={
-    #         "help":
-    #         "Update the trainer state with the trained steps and epochs."  # 每一轮开始时更新读取的step和epoch，否则从模型的config.json中读取
-    #     })
-    # num_steps_trained_before_this_epoch: int = field(
-    #     default=0,
-    #     metadata={"help": "多少步在这个epoch之前训过"})  # /home/u20140041/pretrain-mini/.venv/lib/python3.12/site-packages/transformers/trainer.py:2168
-    # num_epochs_trained_before_this_epoch: int = field(
-    #     default=0,
-    #     metadata={"help": "多少个epoch在这个epoch之前训过"})
+    # NOTE: insert the 8bit adamw etc here. I think we want to just go linear and copy the og paper
+    learning_rate: float = 3e-4
+    max_grad_norm: float = 1.0
+    warmup_ratio: float = 0.05 # or however much is like 500 steps
+    lr_scheduler_type: str = "linear"
+    num_train_epochs: float = 1.0
+    optim: str = "paged_adamw_8bit"
 pass
 
 
@@ -105,9 +84,8 @@ pass
 class PretrainDataset(Dataset):
 
     # To use doc attention mask, add "position_ids" column to the `train_dataset`
-    # can we just generate this on the fly?
 
-    def __init__(self, train_dataset, eos_token_id, skip=0):
+    def __init__(self, train_dataset, eos_token_id = None, skip=0):
         super(PretrainDataset, self).__init__()
         self.sources = train_dataset
         self.banned_idx = set()  # <-- Add banned indices here (not used)
@@ -130,13 +108,14 @@ class PretrainDataset(Dataset):
             idx = self.available_idx[f]
 
         ipt_ids = self.sources[idx]["input_ids"]
+        # the logic here doesn't seem to make sense, but internally transformers handles it
         results = dict(input_ids=ipt_ids,
                        labels=copy.deepcopy(ipt_ids),
                        idx=idx)
-        if "position_ids" in self.sources[idx]:  # for doc attention mask
-            results["position_ids"] = self.sources[idx]["position_ids"]
-        if "subset" in self.sources[idx]:  # record the subset
-            results["subset"] = self.sources[idx]["subset"]
+        # if "position_ids" in self.sources[idx]:  # for doc attention mask
+        #     results["position_ids"] = self.sources[idx]["position_ids"]
+        # if "subset" in self.sources[idx]:  # record the subset
+        #     results["subset"] = self.sources[idx]["subset"]
 
         return results
 
@@ -144,7 +123,7 @@ class PretrainDataset(Dataset):
 @dataclass
 class DataCollatorForPretrainDataset:
     data_args: DataArguments
-    tokenizer: transformers.PreTrainedTokenizer
+   # tokenizer: transformers.PreTrainedTokenizer
     # pretty simple class
     def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
         r = dict(
@@ -154,9 +133,9 @@ class DataCollatorForPretrainDataset:
                     for d in instances] if "subset" in instances[0] else None,
             idx=[d["idx"] for d in instances],
         )
-        if "position_ids" in instances[0]:  # for doc attention mask
-            r["position_ids"] = torch.tensor(
-                [d["position_ids"] for d in instances])
+        # if "position_ids" in instances[0]:  # for doc attention mask
+        #     r["position_ids"] = torch.tensor(
+        #         [d["position_ids"] for d in instances])
         return r
 
 
@@ -171,6 +150,7 @@ def prepare_data(tokenizer,
     time.sleep(sleep_time / 2)
 
     # load the dataset
+    # since we're following LLM 360 for data, we need to change this
     train_dataset = []
     for data_name in sorted(os.listdir(data_args.data_path)):
         # support parquet format dataset to save disk space
@@ -192,29 +172,7 @@ def prepare_data(tokenizer,
         train_dataset.append(d)
         print(f"Dataset {data_name} loaded")
 
-    # print the start index of each dataset
-    if RANK == 0:
-        start_index = 0
-        for d in train_dataset:
-            print(f"Dataset {d['subset'][0]} start index: {start_index}")
-            start_index += len(d)
-
-    print(len(train_dataset))
-    train_dataset = datasets.concatenate_datasets(train_dataset)
-    print(train_dataset)
-
     print(f"train dataset size: {len(train_dataset)}")
-    # if RANK == WORLD_SIZE - 1:
-    #     for index in [0] + list(random.sample(range(len(train_dataset)), 20)):
-    #         print(
-    #             f"Sample {index} of the training set: {train_dataset[index]}.")
-    #         print("---------" * 9)
-    #         if isinstance(train_dataset[index]["input_ids"][0], list):
-    #             print(tokenizer.decode(train_dataset[index]["input_ids"][0]))
-    #         else:
-    #             print(tokenizer.decode(train_dataset[index]["input_ids"]))
-    #         print("=========" * 9)
-
     train_dataset = PretrainDataset(train_dataset=train_dataset,
                                       eos_token_id=tokenizer.eos_token_id,
                                       skip=skip)
@@ -228,17 +186,16 @@ def prepare_data(tokenizer,
 def get_model_tokenizer(model_args, data_args, training_args):
     from transformers import AutoTokenizer
 
-    from configuration_phi import PhiConfig
-    from modeling_phi import PhiForCausalLM
+    from configuration_phi import QPhiConfig
+    from modeling_phi import QPhiForCausalLM
 
     # load model and tokenizer
-    config = PhiConfig.from_pretrained(model_name_or_path)
-    model = PhiForCausalLM.from_pretrained(
+    # config = QPhiConfig.from_pretrained(model_name_or_path)
+    model = QPhiForCausalLM.from_pretrained(
         model_name_or_path,
         attn_implementation="flash_attention_2"
         if model_args.flash_attention else None,
-        torch_dtype=getattr(torch, model_args.config_dtype),
-        config=config,
+        torch_dtype=getattr(torch, model_args.config_dtype)
     )
     tokenizer = AutoTokenizer.from_pretrained(
         model_name_or_path,

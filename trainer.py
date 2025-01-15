@@ -1,4 +1,5 @@
 from transformers import Trainer
+import torch
 
 
 class MinimalTrainer(Trainer):
@@ -31,7 +32,7 @@ class MinimalTrainer(Trainer):
         return data
     
     def evaluate_hellaswag(self, model, batch_size):
-        from hellaswag import evaluate
+        from data.hellaswag import evaluate
         with torch.no_grad():
             results = evaluate(model, batch_size)
         return results
