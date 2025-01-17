@@ -168,7 +168,7 @@ def prepare_data(tokenizer,
 
     # load the dataset
     # since we're following LLM 360 for data, we need to change this
-    train_dataset = datasets.load_dataset("semran1/packed_40B", split="train")
+    train_dataset = datasets.load_dataset("semran1/packed_40B", split="val")
 
     print(f"train dataset size: {len(train_dataset)}")
     train_dataset = PretrainDataset(train_dataset=train_dataset,
