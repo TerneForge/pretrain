@@ -11,7 +11,7 @@ from transformers.trainer_utils import speed_metrics
 from transformers.utils import is_torch_xla_available
 import sys
 from packaging import version
-from transformers.trainer_pt_utils import get_dataloader
+from transformers.trainer_pt_utils import get_dataloader, nested_detach
 from transformers.trainer_utils import EvalLoopOutput, has_length
 from transformers.utils import logging
 
@@ -74,7 +74,6 @@ class MinimalTrainer(Trainer):
         validation = super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
         hellaswag = self.evaluate_hellaswag(self.hellaswag_dataset)
         metrics = validation | hellaswag
-        # Default evaluation logic
         return metrics
     # need to modify get_eval_dataloader
     def evaluate_hellaswag(
@@ -84,8 +83,9 @@ class MinimalTrainer(Trainer):
         metric_key_prefix: str = "eval",
     ) -> Dict[str, float]:
         self.compute_metrics = HellaswagMetrics # switch this up
+
+        ############### I think we just need to write the eval loop in here. ####################
         # memory metrics - must set up as early as possible
-        self._memory_tracker.start()
 
         eval_dataloader = self.get_eval_dataloader_hs(eval_dataset)
         if self.is_fsdp_xla_v2_enabled:
@@ -93,42 +93,117 @@ class MinimalTrainer(Trainer):
 
         start_time = time.time()
 
-        eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
-        output = eval_loop(
-            eval_dataloader,
-            description="Hellaswag Evaluation",
-            # No point gathering the predictions if there are no metrics, otherwise we defer to
-            # self.args.prediction_loss_only
-            prediction_loss_only=True if self.compute_metrics is None else None,
-            ignore_keys=ignore_keys,
-            metric_key_prefix=metric_key_prefix,
-        )
+        # eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
+        
+        # output = eval_loop(
+        #     eval_dataloader,
+        #     description="Hellaswag Evaluation",
+        #     # No point gathering the predictions if there are no metrics, otherwise we defer to
+        #     # self.args.prediction_loss_only
+        #     prediction_loss_only=True if self.compute_metrics is None else None,
+        #     ignore_keys=ignore_keys,
+        #     metric_key_prefix=metric_key_prefix,
+        # )
+        # need to prep model as well
+        args = self.args
 
-        total_batch_size = self.args.eval_batch_size * self.args.world_size
-        if f"{metric_key_prefix}_jit_compilation_time" in output.metrics:
-            start_time += output.metrics[f"{metric_key_prefix}_jit_compilation_time"]
-        if f"{metric_key_prefix}_model_preparation_time" in output.metrics:
-            start_time += output.metrics[f"{metric_key_prefix}_model_preparation_time"]
-        output.metrics.update(
-            speed_metrics(
-                metric_key_prefix,
-                start_time,
-                num_samples=output.num_samples,
-                num_steps=math.ceil(output.num_samples / total_batch_size),
+        # if eval is called w/o train, handle model prep here
+        if self.is_deepspeed_enabled and self.deepspeed is None:
+            _, _ = deepspeed_init(self, num_training_steps=0, inference=True)
+
+        model = self._wrap_model(self.model, training=False, dataloader=eval_dataloader)
+
+        if len(self.accelerator._models) == 0 and model is self.model:
+            start_time = time.time()
+            model = (
+                self.accelerator.prepare(model)
+                if self.is_deepspeed_enabled or (self.is_fsdp_enabled and self.accelerator.mixed_precision != "fp8")
+                else self.accelerator.prepare_model(model, evaluation_mode=True)
             )
-        )
+            self.model_preparation_time = round(time.time() - start_time, 4)
 
-        self.log(output.metrics)
+            if self.is_fsdp_enabled:
+                self.model = model
 
-        if DebugOption.TPU_METRICS_DEBUG in self.args.debug:
-            # tpu-comment: Logging debug metrics for PyTorch/XLA (compile, execute times, ops, etc.)
-            xm.master_print(met.metrics_report())
+            # for the rest of this function `model` is the outside model, whether it was wrapped or not
+            if model is not self.model:
+                self.model_wrapped = model
 
-        self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
+            # backward compatibility
+            if self.is_deepspeed_enabled:
+                self.deepspeed = self.model_wrapped
 
-        self._memory_tracker.stop_and_update_metrics(output.metrics)
+             # if full fp16 or bf16 eval is wanted and this ``evaluation`` or ``predict`` isn't called
+        # while ``train`` is running, cast it to the right dtype first and then put on device
+        if not self.is_in_train:
+            if args.fp16_full_eval:
+                model = model.to(dtype=torch.float16, device=args.device)
+            elif args.bf16_full_eval:
+                model = model.to(dtype=torch.bfloat16, device=args.device)
 
-        return output.metrics
+        batch_size = self.args.eval_batch_size
+
+        logger.info(f"\n***** Running {description} *****")
+        if has_length(eval_dataloader):
+            logger.info(f"  Num examples = {self.num_examples(eval_dataloader)}")
+        else:
+            logger.info("  Num examples: Unknown")
+        logger.info(f"  Batch size = {batch_size}")
+
+        model.eval()
+        if hasattr(self.optimizer, "eval") and callable(self.optimizer.eval):
+            self.optimizer.eval()
+
+        self.callback_handler.eval_dataloader = eval_dataloader
+        # Do this before wrapping.
+        eval_dataset = getattr(eval_dataloader, "dataset", None)
+
+        metrics = HellaswagMetrics()
+        with torch.no_grad():
+            for step, inputs in enumerate(eval_dataloader):
+                tokens = inputs.input_ids
+                labels = inputs.labels
+                mask = inputs.mask
+                model_inputs = {"input_ids": tokens}
+                out = model(**model_inputs)
+                logits = out.logits
+                logits = nested_detach(logits)
+                # now we need to all gather
+                tokens = self.accelerator.pad_across_processes(tokens, dim=1, pad_index=-100)
+                # labels = self.accelerator.pad_across_processes(labels, dim=1, pad_index=-100)
+                logits = self.accelerator.pad_across_processes(logits, dim=1, pad_index=-100)
+                logits = self.gather_function((logits))
+                labels = self.gather_function((labels))
+                tokens = self.gather_function((tokens))
+                is_last_step = self.accelerator.gradient_state.end_of_dataloader
+                output = metrics(logits, tokens, labels, mask, is_last_step)
+                del tokens, logits, labels, inputs
+                torch.cuda.empty_cache()
+        self.gather_function = self.accelerator.gather_for_metrics
+
+
+        # total_batch_size = self.args.eval_batch_size * self.args.world_size
+        # output.metrics.update(
+        #     speed_metrics(
+        #         metric_key_prefix,
+        #         start_time,
+        #         num_samples=output.num_samples,
+        #         num_steps=math.ceil(output.num_samples / total_batch_size),
+        #     )
+        # )
+
+        # self.log(output.metrics)
+
+        # if DebugOption.TPU_METRICS_DEBUG in self.args.debug:
+        #     # tpu-comment: Logging debug metrics for PyTorch/XLA (compile, execute times, ops, etc.)
+        #     xm.master_print(met.metrics_report())
+
+        # self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
+
+        # self._memory_tracker.stop_and_update_metrics(output.metrics)
+
+        # return output.metrics
+        return output
     
     def get_eval_dataloader_hs(self, eval_dataset: Optional[Union[str, Dataset]] = None) -> DataLoader:
         """

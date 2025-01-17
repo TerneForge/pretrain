@@ -130,12 +130,6 @@ class DataCollatorForHellaSwag:
             dtype=torch.long
         )
         
-        # Initialize tensors for label dict
-        label_tokens = torch.full(
-            (batch_size, 4, max_len),
-            self.pad_token_id,
-            dtype=torch.long
-        )
         label_mask = torch.zeros(
             (batch_size, 4, max_len),
             dtype=torch.long
@@ -148,7 +142,6 @@ class DataCollatorForHellaSwag:
             seq_len = example["tokens"].shape[1]
             tokens[i, :, :seq_len] = example["tokens"]
             # Fill label dict tensors
-            label_tokens[i, :, :seq_len] = example["label"]["tokens"]
             label_mask[i, :, :seq_len] = example["label"]["mask"]
             label_indices[i] = example["label"]["label"]
             indices[i] = example["idx"]
@@ -160,11 +153,8 @@ class DataCollatorForHellaSwag:
             
         return {
             "input_ids": tokens,           # Shape: (batch_size * 4, seq_len)
-            "labels": {                    # Dict containing tensors needed for loss computation
-                "tokens": label_tokens,     # Shape: (batch_size * 4, seq_len)
-                "mask": label_mask,         # Shape: (batch_size * 4, seq_len)
-                "label": label_indices      # Shape: (batch_size,)
-            },
+            "mask": label_mask,             # Shape: (batch_size * 4, seq_len)
+            "labels": label_indices ,     # Shape: (batch_size,)
             "idx": indices                 # Shape: (batch_size,)
         }
 
@@ -174,12 +164,7 @@ class HellaswagMetrics:
         self.correct_norm = 0
         self.total = 0
 
-    def __call__(self, eval_prediction, compute_last=False):
-        # Get labels and logits
-        labels = eval_prediction.predictions
-        logits = eval_prediction.label_ids
-        tokens = labels.tokens
-        mask = labels.mask
+    def __call__(self, logits, tokens, labels, mask, compute_last=False):
 
         # Calculate losses
         shift_logits = (logits[..., :-1, :]).contiguous()
@@ -192,7 +177,7 @@ class HellaswagMetrics:
         # Get masked losses
         shift_mask = (mask[..., 1:]).contiguous()
         masked_shift_losses = shift_losses * shift_mask
-        sum_loss = masked_shift_losses.sum(dim=1) # across seq_len
+        sum_loss = masked_shift_losses.sum(dim=1) 
         avg_loss = sum_loss / shift_mask.sum(dim=1)
 
         # Reshape losses from (batch_size * 4, seq_len) back to (batch_size, 4)
