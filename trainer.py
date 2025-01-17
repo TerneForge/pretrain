@@ -11,8 +11,8 @@ from transformers.trainer_utils import speed_metrics
 from transformers.utils import is_torch_xla_available
 import sys
 from packaging import version
-from transformers.trainer_pt_utils import get_dataloader, nested_detach
-from transformers.trainer_utils import EvalLoopOutput, has_length
+from transformers.trainer_pt_utils import nested_detach
+from transformers.trainer_utils import has_length
 from transformers.utils import logging
 
 

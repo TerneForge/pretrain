@@ -1,4 +1,4 @@
 #!/bin/bash
 
 # trains
-python train.py
+python train.py --output_dir phi

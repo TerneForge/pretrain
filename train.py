@@ -4,12 +4,6 @@ import os
 
 from tqdm import tqdm
 
-print(f"LOCAL_RANK: {os.environ['LOCAL_RANK']}")
-print(f"RANK: {os.environ['RANK']}")
-print(f"WORLD_SIZE: {os.environ['WORLD_SIZE']}")
-print(f"MASTER_ADDR: {os.environ['MASTER_ADDR']}")
-print(f"MASTER_PORT: {os.environ['MASTER_PORT']}")
-
 import copy
 import glob
 import random
@@ -30,7 +24,7 @@ from torch.utils.tensorboard import SummaryWriter
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, set_seed
 from transformers.integrations.deepspeed import deepspeed_config
 
-from train_utils import LogCallback, PyTorchProfilerCallback, print_rank0
+# from train_utils import LogCallback, PyTorchProfilerCallback, print_rank0
 from trainer import MinimalTrainer
 from eval_utils import download
 

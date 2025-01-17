@@ -2,7 +2,6 @@ torch
 transformers
 tqdm
 psutil
-json
 requests
 zstandard
 datasets
