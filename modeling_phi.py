@@ -211,7 +211,7 @@ class PhiAttention(nn.Module):
             attention_mask,
             dropout=0.0 if not self.training else self.attention_dropout,
             scaling=self.scaling,
-            **kwargs,
+            # **kwargs,
         )
 
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()

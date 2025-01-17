@@ -102,6 +102,7 @@ class TrainingArguments(transformers.TrainingArguments):
         metadata={"help": "多少个epoch在这个epoch之前训过"})
     log_dir: str = field(default=None)
     profile: bool = field(default=False)
+    remove_unused_columns: Optional[bool] = False
 
 pass
 
