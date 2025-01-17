@@ -5,7 +5,7 @@ import torch.amp as amp
 import shutil
 import torch.distributed as dist
 import os
-from eval_utils import DataCollatorForHellaSwag, HellaswagMetrics, HellaSwagDataset
+from eval_utils import DataCollatorForHellaSwag, HellaswagMetrics, HellaSwagDataset, IterableHellaSwagDataset
 from typing import Dict, List, Optional, Union
 from torch.utils.data import Dataset, DataLoader
 import math
@@ -73,7 +73,7 @@ TRAINER_STATE_NAME = "trainer_state.json"
 class MinimalTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.hellaswag_dataset = HellaSwagDataset
+        self.hellaswag_dataset = IterableHellaSwagDataset()
 
     def _prepare_input(self, data):
         """

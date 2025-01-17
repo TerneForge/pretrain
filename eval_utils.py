@@ -9,7 +9,39 @@ from torch.nn import functional as F
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import load_dataset
 
+DATA_CACHE_DIR = os.path.join(os.path.dirname(__file__), "hellaswag")
+
+hellaswags = {
+    "train": "https://raw.githubusercontent.com/rowanz/hellaswag/master/data/hellaswag_train.jsonl",
+    "val": "https://raw.githubusercontent.com/rowanz/hellaswag/master/data/hellaswag_val.jsonl",
+    "test": "https://raw.githubusercontent.com/rowanz/hellaswag/master/data/hellaswag_test.jsonl",
+}
+
 enc = AutoTokenizer.from_pretrained("microsoft/phi-1_5")
+
+def download_file(url, dest_path):
+    """Downloads a file from a URL to a destination path."""
+    response = requests.get(url, stream=True)
+    response.raise_for_status()
+    with open(dest_path, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+
+def write_evalfile(filename, datas):
+    """Writes evaluation data to a binary file."""
+    with open(filename, "wb") as f:
+        torch.save(datas, f)
+
+def download(split):
+    """Downloads HellaSwag dataset to DATA_CACHE_DIR."""
+    os.makedirs(DATA_CACHE_DIR, exist_ok=True)
+    data_url = hellaswags[split]
+    data_filename = os.path.join(DATA_CACHE_DIR, f"hellaswag_{split}.jsonl")
+    if not os.path.exists(data_filename):
+        print(f"Downloading {data_url} to {data_filename}...")
+        download_file(data_url, data_filename)
+    else:
+        print(f"{data_filename} already exists, skipping download...")
 
 def render_example(example):
     """
@@ -50,17 +82,46 @@ def render_example(example):
 
     return data, tokens, mask, label
 
+
+def iterate_examples(split):
+    """Iterates through examples in the HellaSwag dataset."""
+    download(split)
+    with open(os.path.join(DATA_CACHE_DIR, f"hellaswag_{split}.jsonl"), "r") as f:
+        for line in f:
+            example = json.loads(line)
+            yield example
+
 # In essence, we need to compute metrics here
 class HellaSwagDataset(torch.utils.data.Dataset):
     """Dataset for HellaSwag evaluation that handles multiple choice format"""
     def __init__(self, split="val"):
-        self.examples = load_dataset("Rowan/hellaswag", split="validation")
+        self.sources = load_dataset("Rowan/hellaswag", split="validation")
+        self.size = len(self.sources)
 
     def __len__(self):
-        return len(self.examples)
+        return self.size
 
     def __getitem__(self, idx):
-        example = self.examples[idx]
+        example = self.sources[idx]
+        data, tokens, mask, label = render_example(example)
+        label = {
+            "tokens": tokens,
+            "mask": mask,
+            "label": label
+        } # we need this to be able to calculate metrics properly
+        return {
+            "tokens": tokens,  # Shape: (4, seq_len) - one row per choice
+            "label": label,   # Dict containing tokens, mask and label
+            "idx": idx        # For distributed training tracking
+        }
+
+class IterableHellaSwagDataset(torch.utils.data.IterableDataset):
+    """Dataset for HellaSwag evaluation that handles multiple choice format"""
+    def __init__(self, split="val"):
+        self.source = iterate_examples(split=split)
+
+    def __iter__(self, idx):
+        example = iter(self.examples)
         data, tokens, mask, label = render_example(example)
         label = {
             "tokens": tokens,
