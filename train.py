@@ -153,26 +153,7 @@ def prepare_data(tokenizer,
 
     # load the dataset
     # since we're following LLM 360 for data, we need to change this
-    train_dataset = []
-    for data_name in sorted(os.listdir(data_args.data_path)):
-        # support parquet format dataset to save disk space
-        for load_fn in [
-                lambda d: datasets.load_dataset(d, split="train", num_proc=8),
-                datasets.load_from_disk,
-        ]:
-            try:
-                d = load_fn(os.path.join(data_args.data_path, data_name))
-                break
-            except Exception as e:
-                print(e, "trying next method")
-                d = None
-                continue
-        if d is None:
-            raise ValueError(f"Failed to load dataset {data_name}")
-
-        d = d.add_column("subset", [data_name] * len(d))
-        train_dataset.append(d)
-        print(f"Dataset {data_name} loaded")
+    train_dataset = datasets.load_dataset("semran1/packed_40B", split="train")
 
     print(f"train dataset size: {len(train_dataset)}")
     train_dataset = PretrainDataset(train_dataset=train_dataset,
@@ -180,8 +161,10 @@ def prepare_data(tokenizer,
                                       skip=skip)
     data_collator = DataCollatorForPretrainDataset(data_args=data_args,
                                                      tokenizer=tokenizer)
+    print("starting eval download")
+    val_dataset = datasets.load_dataset("semran1/packed_40B", split="val")
     return dict(train_dataset=train_dataset,
-                eval_dataset=None,
+                eval_dataset=val_dataset,
                 data_collator=data_collator)
 
 
@@ -193,6 +176,7 @@ def get_model_tokenizer(model_args, data_args, training_args):
 
     # load model and tokenizer
     # config = QPhiConfig.from_pretrained(model_name_or_path)
+    model_name_or_path=model_args.model_name_or_path
     model = QPhiForCausalLM.from_pretrained(
         model_name_or_path,
         attn_implementation="flash_attention_2"
@@ -218,7 +202,7 @@ def get_model_tokenizer(model_args, data_args, training_args):
 
 
 def train():
-    wandb.login(key="xxx")
+    wandb.login(key="Bd8e3eb1919976284f0e2615608b1d7af8bdf98b")
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()

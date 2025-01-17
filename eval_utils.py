@@ -214,6 +214,8 @@ class HellaswagMetrics:
 
         return metrics
 
+if __name__ == "__main__":
+    download("val")
 
 
 

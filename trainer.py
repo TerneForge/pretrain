@@ -143,7 +143,7 @@ class MinimalTrainer(Trainer):
 
         batch_size = self.args.eval_batch_size
 
-        logger.info(f"\n***** Running {description} *****")
+        logger.info(f"\n***** Running Hellaswag *****")
         if has_length(eval_dataloader):
             logger.info(f"  Num examples = {self.num_examples(eval_dataloader)}")
         else:
