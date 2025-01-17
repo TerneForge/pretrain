@@ -37,6 +37,7 @@ WORLD_SIZE = int(os.getenv("WORLD_SIZE", "1"))
 class ModelArguments:
     model_name_or_path: Optional[str] = field(default="microsoft/phi-1_5")
     flash_attention: Optional[bool] = field(default=True)
+    config_dtype: Optional[str] = field(default="bfloat16")
 
     # z-loss
     z_loss: float = field(default=0.0, metadata={"help": "z_loss"})
@@ -86,6 +87,21 @@ class TrainingArguments(transformers.TrainingArguments):
     save_total_limit = 4
     eval_strategy: str = "steps"
     eval_steps: int = 250
+
+    update_trained_steps_and_epochs: bool = field(  # whether to start a new curriculum phase
+        default=False,
+        metadata={
+            "help":
+            "Update the trainer state with the trained steps and epochs."  # 每一轮开始时更新读取的step和epoch，否则从模型的config.json中读取
+        })
+    num_steps_trained_before_this_epoch: int = field(
+        default=0,
+        metadata={"help": "多少步在这个epoch之前训过"})  # /home/u20140041/pretrain-mini/.venv/lib/python3.12/site-packages/transformers/trainer.py:2168
+    num_epochs_trained_before_this_epoch: int = field(
+        default=0,
+        metadata={"help": "多少个epoch在这个epoch之前训过"})
+    log_dir: str = field(default=None)
+    profile: bool = field(default=False)
 
 pass
 
@@ -223,16 +239,10 @@ def train():
             for c in glob.glob(f"{model_args.model_name_or_path}/checkpoint-*")
             if os.path.basename(c).split("-")[1].isdigit()
         ]
-        # if training_args.add_rms_norm:
-        #     checkpoints = [c for c in checkpoints if c.endswith('-rms_norm')]
-        # else:
-        #     checkpoints = [c for c in checkpoints if not c.endswith('-rms_norm')]
         if len(checkpoints) > 0:
             model_args.model_name_or_path = max(
                 checkpoints, key=lambda x: int(os.path.basename(x).split("-")[1]))
             training_args.resume_from_checkpoint = model_args.model_name_or_path
-        else:
-            raise ValueError()
 
     # Calculate where to resume training, i.e. new phase or same phase
     if training_args.num_steps_trained_before_this_epoch != 0 or training_args.num_epochs_trained_before_this_epoch != 0:
@@ -284,7 +294,7 @@ def train():
     if RANK == 0:
         print(f"wandb_path: {wandb_path}")
     os.makedirs(wandb_path, exist_ok=True)
-    wandb.init(project="yulanmini",
+    wandb.init(project="qphi",
                resume="allow",
                group=training_args.run_name,
                name=training_args.run_name,
