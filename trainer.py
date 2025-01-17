@@ -30,8 +30,6 @@ else:
 
 logger = logging.get_logger(__name__)
 
-
-
 class MinimalTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -90,20 +88,6 @@ class MinimalTrainer(Trainer):
         eval_dataloader = self.get_eval_dataloader_hs(eval_dataset)
         if self.is_fsdp_xla_v2_enabled:
             eval_dataloader = tpu_spmd_dataloader(eval_dataloader)
-
-        start_time = time.time()
-
-        # eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
-        
-        # output = eval_loop(
-        #     eval_dataloader,
-        #     description="Hellaswag Evaluation",
-        #     # No point gathering the predictions if there are no metrics, otherwise we defer to
-        #     # self.args.prediction_loss_only
-        #     prediction_loss_only=True if self.compute_metrics is None else None,
-        #     ignore_keys=ignore_keys,
-        #     metric_key_prefix=metric_key_prefix,
-        # )
         # need to prep model as well
         args = self.args
 
@@ -180,29 +164,6 @@ class MinimalTrainer(Trainer):
                 del tokens, logits, labels, inputs
                 torch.cuda.empty_cache()
         self.gather_function = self.accelerator.gather_for_metrics
-
-
-        # total_batch_size = self.args.eval_batch_size * self.args.world_size
-        # output.metrics.update(
-        #     speed_metrics(
-        #         metric_key_prefix,
-        #         start_time,
-        #         num_samples=output.num_samples,
-        #         num_steps=math.ceil(output.num_samples / total_batch_size),
-        #     )
-        # )
-
-        # self.log(output.metrics)
-
-        # if DebugOption.TPU_METRICS_DEBUG in self.args.debug:
-        #     # tpu-comment: Logging debug metrics for PyTorch/XLA (compile, execute times, ops, etc.)
-        #     xm.master_print(met.metrics_report())
-
-        # self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
-
-        # self._memory_tracker.stop_and_update_metrics(output.metrics)
-
-        # return output.metrics
         return output
     
     def get_eval_dataloader_hs(self, eval_dataset: Optional[Union[str, Dataset]] = None) -> DataLoader:
