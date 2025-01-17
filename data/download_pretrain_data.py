@@ -10,5 +10,5 @@ def download_data(names, dir):
 if __name__ == "__main__":
     save_dir = "./data"
     # we have a total of 8 datasets to download
-    names = ["semran1/textbook-quality-tk-tokenized", "semran1/opc-annealing-corpus-synth-qa-tokenized", ""]
-    download_data(name, dir)
+    names = ["semran1/full"]
+    download_data(names, dir)

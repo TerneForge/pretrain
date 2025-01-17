@@ -130,7 +130,7 @@ def evaluate(model_type, device):
     num_correct_norm = 0
     num_correct = 0
     num_total = 0
-    for example in iterate_examples("val"):
+    for example in iterate_examples("test"):
         data, tokens, mask, label = render_example(example)
         datas.append(data)
         tokens = tokens.to(device)
@@ -179,6 +179,6 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model_type", type=str, default="microsoft/phi-1_5", help="the model type to use")
-    parser.add_argument("-d", "--device", type=str, default="cpu", help="the device to use")
+    parser.add_argument("-d", "--device", type=str, default="mps", help="the device to use")
     args = parser.parse_args()
     evaluate(args.model_type, args.device)

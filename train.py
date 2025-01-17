@@ -31,7 +31,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, set_seed
 from transformers.integrations.deepspeed import deepspeed_config
 
 from train_utils import LogCallback, PyTorchProfilerCallback, print_rank0
-from trainer import YuLanMiniTrainer
+from trainer import MinimalTrainer
+from eval_utils import download
 
 LOCAL_RANK = int(os.getenv("LOCAL_RANK", "0"))
 RANK = int(os.getenv("RANK", "0"))
@@ -70,6 +71,7 @@ class TrainingArguments(transformers.TrainingArguments):
     log_dir: str = field(default=None)
     profile: bool = field(default=False)
     # NOTE: insert the 8bit adamw etc here. I think we want to just go linear and copy the og paper
+    # also need to tune lr a little 
     learning_rate: float = 3e-4
     max_grad_norm: float = 1.0
     warmup_ratio: float = 0.05 # or however much is like 500 steps

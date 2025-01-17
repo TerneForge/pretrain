@@ -1,8 +1,41 @@
 from transformers import Trainer
 import torch
+from eval_utils import DataCollatorForHellaSwag, HellaswagMetrics, HellaSwagDataset
+from typing import Dict, List, Optional, Union
+from torch.utils.data import Dataset, DataLoader
+import math
+import time
+from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
+from transformers.integrations.tpu import tpu_spmd_dataloader
+from transformers.trainer_utils import speed_metrics
+from transformers.utils import is_torch_xla_available
+import sys
+from packaging import version
+from transformers.trainer_pt_utils import get_dataloader
+from transformers.trainer_utils import EvalLoopOutput, has_length
+from transformers.utils import logging
+
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+    import torch_xla.debug.metrics as met
+    from torch_xla import __version__ as XLA_VERSION
+
+    IS_XLA_FSDPV2_POST_2_2 = version.parse(XLA_VERSION) >= version.parse(XLA_FSDPV2_MIN_VERSION)
+    if IS_XLA_FSDPV2_POST_2_2:
+        import torch_xla.distributed.spmd as xs
+        import torch_xla.runtime as xr
+else:
+    IS_XLA_FSDPV2_POST_2_2 = False
+
+logger = logging.get_logger(__name__)
+
 
 
 class MinimalTrainer(Trainer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.hellaswag_dataset = HellaSwagDataset
 
     def _prepare_input(self, data):
         """
@@ -31,74 +64,30 @@ class MinimalTrainer(Trainer):
             return data.to(**kwargs, non_blocking=True)
         return data
     
-    def evaluate_hellaswag(self, model, batch_size):
-        from data.hellaswag import evaluate
-        with torch.no_grad():
-            results = evaluate(model, batch_size)
-        return results
-    
-    def evaluate(
+    # modify this method to run hellaswag
+    def evaluate(self,
+        eval_dataset: Optional[Union[Dataset, Dict[str, Dataset]]] = None,
+        ignore_keys: Optional[List[str]] = None,
+        metric_key_prefix: str = "eval",
+        ) -> Dict[str, float]:
+        self.compute_metrics = None
+        validation = super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
+        hellaswag = self.evaluate_hellaswag(self.hellaswag_dataset)
+        metrics = validation | hellaswag
+        # Default evaluation logic
+        return metrics
+    # need to modify get_eval_dataloader
+    def evaluate_hellaswag(
         self,
         eval_dataset: Optional[Union[Dataset, Dict[str, Dataset]]] = None,
         ignore_keys: Optional[List[str]] = None,
         metric_key_prefix: str = "eval",
     ) -> Dict[str, float]:
-        """
-        Run evaluation and returns metrics.
-
-        The calling script will be responsible for providing a method to compute metrics, as they are task-dependent
-        (pass it to the init `compute_metrics` argument).
-
-        You can also subclass and override this method to inject custom behavior.
-
-        Args:
-            eval_dataset (Union[`Dataset`, Dict[str, `Dataset`]), *optional*):
-                Pass a dataset if you wish to override `self.eval_dataset`. If it is a [`~datasets.Dataset`], columns
-                not accepted by the `model.forward()` method are automatically removed. If it is a dictionary, it will
-                evaluate on each dataset, prepending the dictionary key to the metric name. Datasets must implement the
-                `__len__` method.
-
-                <Tip>
-
-                If you pass a dictionary with names of datasets as keys and datasets as values, evaluate will run
-                separate evaluations on each dataset. This can be useful to monitor how training affects other
-                datasets or simply to get a more fine-grained evaluation.
-                When used with `load_best_model_at_end`, make sure `metric_for_best_model` references exactly one
-                of the datasets. If you, for example, pass in `{"data1": data1, "data2": data2}` for two datasets
-                `data1` and `data2`, you could specify `metric_for_best_model="eval_data1_loss"` for using the
-                loss on `data1` and `metric_for_best_model="eval_data2_loss"` for the loss on `data2`.
-
-                </Tip>
-
-            ignore_keys (`List[str]`, *optional*):
-                A list of keys in the output of your model (if it is a dictionary) that should be ignored when
-                gathering predictions.
-            metric_key_prefix (`str`, *optional*, defaults to `"eval"`):
-                An optional prefix to be used as the metrics key prefix. For example the metrics "bleu" will be named
-                "eval_bleu" if the prefix is "eval" (default)
-
-        Returns:
-            A dictionary containing the evaluation loss and the potential metrics computed from the predictions. The
-            dictionary also contains the epoch number which comes from the training state.
-        """
-        # handle multipe eval datasets
-        override = eval_dataset is not None
-        eval_dataset = eval_dataset if override else self.eval_dataset
-        if isinstance(eval_dataset, dict):
-            metrics = {}
-            for eval_dataset_name, _eval_dataset in eval_dataset.items():
-                dataset_metrics = self.evaluate(
-                    eval_dataset=_eval_dataset if override else eval_dataset_name,
-                    ignore_keys=ignore_keys,
-                    metric_key_prefix=f"{metric_key_prefix}_{eval_dataset_name}",
-                )
-                metrics.update(dataset_metrics)
-            return metrics
-
+        self.compute_metrics = HellaswagMetrics # switch this up
         # memory metrics - must set up as early as possible
         self._memory_tracker.start()
 
-        eval_dataloader = self.get_eval_dataloader(eval_dataset)
+        eval_dataloader = self.get_eval_dataloader_hs(eval_dataset)
         if self.is_fsdp_xla_v2_enabled:
             eval_dataloader = tpu_spmd_dataloader(eval_dataloader)
 
@@ -107,14 +96,14 @@ class MinimalTrainer(Trainer):
         eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
         output = eval_loop(
             eval_dataloader,
-            description="Evaluation",
+            description="Hellaswag Evaluation",
             # No point gathering the predictions if there are no metrics, otherwise we defer to
             # self.args.prediction_loss_only
             prediction_loss_only=True if self.compute_metrics is None else None,
             ignore_keys=ignore_keys,
             metric_key_prefix=metric_key_prefix,
         )
-        # insert eval_hellaswag somewhere here
+
         total_batch_size = self.args.eval_batch_size * self.args.world_size
         if f"{metric_key_prefix}_jit_compilation_time" in output.metrics:
             start_time += output.metrics[f"{metric_key_prefix}_jit_compilation_time"]
@@ -140,6 +129,56 @@ class MinimalTrainer(Trainer):
         self._memory_tracker.stop_and_update_metrics(output.metrics)
 
         return output.metrics
+    
+    def get_eval_dataloader_hs(self, eval_dataset: Optional[Union[str, Dataset]] = None) -> DataLoader:
+        """
+        Returns the evaluation [`~torch.utils.data.DataLoader`].
+
+        Subclass and override this method if you want to inject some custom behavior.
+
+        Args:
+            eval_dataset (`str` or `torch.utils.data.Dataset`, *optional*):
+                If a `str`, will use `self.eval_dataset[eval_dataset]` as the evaluation dataset. If a `Dataset`, will override `self.eval_dataset` and must implement `__len__`. If it is a [`~datasets.Dataset`], columns not accepted by the `model.forward()` method are automatically removed.
+        """
+        if eval_dataset is None and self.eval_dataset is None:
+            raise ValueError("Trainer: evaluation requires an eval_dataset.")
+
+        # If we have persistent workers, don't do a fork bomb especially as eval datasets
+        # don't change during training
+        dataloader_key = eval_dataset if isinstance(eval_dataset, str) else "eval"
+        if (
+            hasattr(self, "_eval_dataloaders")
+            and dataloader_key in self._eval_dataloaders
+            and self.args.dataloader_persistent_workers
+        ):
+            return self.accelerator.prepare(self._eval_dataloaders[dataloader_key])
+
+        eval_dataset = (
+            self.eval_dataset[eval_dataset]
+            if isinstance(eval_dataset, str)
+            else eval_dataset
+            if eval_dataset is not None
+            else self.eval_dataset
+        )
+        data_collator = DataCollatorForHellaSwag
+
+        dataloader_params = {
+            "batch_size": self.args.eval_batch_size,
+            "collate_fn": data_collator,
+            "num_workers": self.args.dataloader_num_workers,
+            "pin_memory": self.args.dataloader_pin_memory,
+            "persistent_workers": self.args.dataloader_persistent_workers,
+        }
+        # accelerator.free_memory() will destroy the references, so
+        # we need to store the non-prepared version
+        eval_dataloader = DataLoader(eval_dataset, **dataloader_params)
+        if self.args.dataloader_persistent_workers:
+            if hasattr(self, "_eval_dataloaders"):
+                self._eval_dataloaders[dataloader_key] = eval_dataloader
+            else:
+                self._eval_dataloaders = {dataloader_key: eval_dataloader}
+
+        return self.accelerator.prepare(eval_dataloader)
 
     def _inner_training_loop(
         self, batch_size=None, args=None, resume_from_checkpoint=None, trial=None, ignore_keys_for_eval=None
