@@ -86,7 +86,7 @@ class TrainingArguments(transformers.TrainingArguments):
     save_steps: int = 1000
     save_total_limit = 4
     eval_strategy: str = "steps"
-    eval_steps: int = 250
+    eval_steps: int = 20
 
     update_trained_steps_and_epochs: bool = field(  # whether to start a new curriculum phase
         default=False,
@@ -134,7 +134,7 @@ class PretrainDataset(Dataset):
         if f is not None:
             idx = self.available_idx[f]
 
-        ipt_ids = self.sources[idx]["input_ids"]
+        ipt_ids = self.sources[idx]["token_ids"]
         # the logic here doesn't seem to make sense, but internally transformers handles it
         results = dict(input_ids=ipt_ids,
                        labels=copy.deepcopy(ipt_ids),
@@ -156,9 +156,7 @@ class DataCollatorForPretrainDataset:
         r = dict(
             input_ids=torch.tensor([d["input_ids"] for d in instances]),
             labels=torch.tensor([d["labels"] for d in instances]),
-            subset=[d["subset"]
-                    for d in instances] if "subset" in instances[0] else None,
-            idx=[d["idx"] for d in instances],
+            # unclear as to exactly why idx doesn't get collated properly
         )
         # if "position_ids" in instances[0]:  # for doc attention mask
         #     r["position_ids"] = torch.tensor(

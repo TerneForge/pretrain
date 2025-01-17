@@ -165,7 +165,7 @@ class MinimalTrainer(Trainer):
             elif args.bf16_full_eval:
                 model = model.to(dtype=torch.bfloat16, device=args.device)
 
-        batch_size = self.args.eval_batch_size
+        batch_size = self.args.eval_batch_size // 4
 
         logger.info(f"\n***** Running Hellaswag *****")
         if has_length(eval_dataloader):
@@ -661,8 +661,10 @@ class MinimalTrainer(Trainer):
                     self.state.epoch = epoch + (step + 1 + steps_skipped) / steps_in_epoch
                     self.control = self.callback_handler.on_step_end(args, self.state, self.control)
                     
+                    if start_time is None:
+                        start_time = time.time()
                     # run hellaswag evaluation if possible here. If not, we can run it every checkpoint?
-                    self._maybe_log_save_evaluate(tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval)
+                    self._maybe_log_save_evaluate(tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time)
                 else:
                     self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
 
