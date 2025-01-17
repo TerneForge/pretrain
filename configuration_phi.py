@@ -25,7 +25,7 @@ from transformers.utils import logging
 logger = logging.get_logger(__name__)
 
 
-class QPhiConfig(PretrainedConfig):
+class PhiConfig(PretrainedConfig):
     r"""
     This is the configuration class to store the configuration of a [`PhiModel`]. It is used to instantiate an Phi
     model according to the specified arguments, defining the model architecture. Instantiating a configuration with the

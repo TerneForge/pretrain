@@ -178,7 +178,7 @@ def prepare_data(tokenizer,
 
     # load the dataset
     # since we're following LLM 360 for data, we need to change this
-    train_dataset = datasets.load_dataset("semran1/packed_40B", split="val")
+    train_dataset = datasets.load_dataset("semran1/packed_40B", split="validation", data_dir="valid")
 
     print(f"train dataset size: {len(train_dataset)}")
     train_dataset = PretrainDataset(train_dataset=train_dataset,
@@ -187,7 +187,7 @@ def prepare_data(tokenizer,
     data_collator = DataCollatorForPretrainDataset(data_args=data_args,
                                                      tokenizer=tokenizer)
     print("starting eval download")
-    val_dataset = datasets.load_dataset("semran1/packed_40B", split="val")
+    val_dataset = datasets.load_dataset("semran1/packed_40B", split="validation", data_dir = "valid")
     return dict(train_dataset=train_dataset,
                 eval_dataset=val_dataset,
                 data_collator=data_collator)
@@ -196,7 +196,7 @@ def prepare_data(tokenizer,
 def get_model_tokenizer(model_args, data_args, training_args):
     from transformers import AutoTokenizer
 
-    from configuration_phi import QPhiConfig
+    from configuration_phi import PhiConfig
     from modeling_phi import QPhiForCausalLM
 
     # load model and tokenizer
@@ -245,21 +245,21 @@ def train():
             training_args.resume_from_checkpoint = model_args.model_name_or_path
 
     # Calculate where to resume training, i.e. new phase or same phase
-    if training_args.num_steps_trained_before_this_epoch != 0 or training_args.num_epochs_trained_before_this_epoch != 0:
-        raise ValueError(
-            "num_steps_trained_before_this_epoch and num_epochs_trained_before_this_epoch 不应该从命令行传入")
-    elif training_args.update_trained_steps_and_epochs:  # new curriculum phase
-        with open(os.path.join(training_args.resume_from_checkpoint, "trainer_state.json")) as f:
-            state = json.load(f)
-        training_args.num_steps_trained_before_this_epoch  = state["global_step"]
-        training_args.num_epochs_trained_before_this_epoch = math.ceil(state["epoch"])
-        del state
-    else:  # continue training in the same curriculum phase
-        with open(os.path.join(training_args.resume_from_checkpoint, "config.json")) as f:
-            config = json.load(f)
-        training_args.num_steps_trained_before_this_epoch  = config["num_steps_trained_before_this_epoch"]
-        training_args.num_epochs_trained_before_this_epoch = config["num_epochs_trained_before_this_epoch"]
-        del config
+    # if training_args.num_steps_trained_before_this_epoch != 0 or training_args.num_epochs_trained_before_this_epoch != 0:
+    #     raise ValueError(
+    #         "num_steps_trained_before_this_epoch and num_epochs_trained_before_this_epoch 不应该从命令行传入")
+    # elif training_args.update_trained_steps_and_epochs:  # new curriculum phase
+    #     with open(os.path.join(training_args.resume_from_checkpoint, "trainer_state.json")) as f:
+    #         state = json.load(f)
+    #     training_args.num_steps_trained_before_this_epoch  = state["global_step"]
+    #     training_args.num_epochs_trained_before_this_epoch = math.ceil(state["epoch"])
+    #     del state
+    # # else:  # continue training in the same curriculum phase
+    # #     with open(os.path.join(training_args.resume_from_checkpoint, "config.json")) as f:
+    # #         config = json.load(f)
+    # #     training_args.num_steps_trained_before_this_epoch  = config["num_steps_trained_before_this_epoch"]
+    # #     training_args.num_epochs_trained_before_this_epoch = config["num_epochs_trained_before_this_epoch"]
+    # #     del config
 
     print("=="*50)
     print(training_args)
@@ -290,7 +290,7 @@ def train():
             continue
         config.update({key: value})
 
-    wandb_path = training_args.log_dir.replace("log/", "log-wandb/", 1)
+    wandb_path = "log-wandb/" # training_args.log_dir.replace("log/", "log-wandb/", 1)
     if RANK == 0:
         print(f"wandb_path: {wandb_path}")
     os.makedirs(wandb_path, exist_ok=True)
