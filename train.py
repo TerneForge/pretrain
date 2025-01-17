@@ -24,7 +24,7 @@ from torch.utils.tensorboard import SummaryWriter
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, set_seed
 from transformers.integrations.deepspeed import deepspeed_config
 
-# from train_utils import LogCallback, PyTorchProfilerCallback, print_rank0
+from train_utils import LogCallback, PyTorchProfilerCallback, print_rank0
 from trainer import MinimalTrainer
 from eval_utils import download
 
@@ -178,7 +178,7 @@ def prepare_data(tokenizer,
 
     # load the dataset
     # since we're following LLM 360 for data, we need to change this
-    train_dataset = datasets.load_dataset("semran1/packed_40B", split="validation", data_dir="valid")
+    train_dataset = datasets.load_dataset("semran1/packed_40B", split="train", data_dir="valid")
 
     print(f"train dataset size: {len(train_dataset)}")
     train_dataset = PretrainDataset(train_dataset=train_dataset,
@@ -187,7 +187,7 @@ def prepare_data(tokenizer,
     data_collator = DataCollatorForPretrainDataset(data_args=data_args,
                                                      tokenizer=tokenizer)
     print("starting eval download")
-    val_dataset = datasets.load_dataset("semran1/packed_40B", split="validation", data_dir = "valid")
+    val_dataset = datasets.load_dataset("semran1/packed_40B", split="train", data_dir = "valid")
     return dict(train_dataset=train_dataset,
                 eval_dataset=val_dataset,
                 data_collator=data_collator)
