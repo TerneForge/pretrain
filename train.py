@@ -115,7 +115,7 @@ class PretrainDataset(Dataset):
 
     def __init__(self, train_dataset, eos_token_id = None, skip=0):
         super(PretrainDataset, self).__init__()
-        self.sources = train_dataset
+        self.sources = train_dataset.shuffle(seed=42)
         self.banned_idx = set()  # <-- Add banned indices here (not used)
         self.available_idx = []
         self.sorted_banned = sorted(self.banned_idx)

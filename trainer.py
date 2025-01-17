@@ -109,9 +109,9 @@ class MinimalTrainer(Trainer):
         metric_key_prefix: str = "eval",
         ) -> Dict[str, float]:
         self.compute_metrics = None
-        # validation = super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
-        hellaswag = self.evaluate_hellaswag(self.hellaswag_dataset)
-        metrics = hellaswag # validation | hellaswag
+        validation = super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
+        # hellaswag = self.evaluate_hellaswag(self.hellaswag_dataset)
+        metrics = validation # validation | hellaswag
         return metrics
     # need to modify get_eval_dataloader
     def evaluate_hellaswag(
@@ -120,7 +120,7 @@ class MinimalTrainer(Trainer):
         ignore_keys: Optional[List[str]] = None,
         metric_key_prefix: str = "eval",
     ) -> Dict[str, float]:
-        self.compute_metrics = HellaswagMetrics # switch this up
+        # self.compute_metrics = HellaswagMetrics # switch this up
 
         ############### I think we just need to write the eval loop in here. ####################
         # memory metrics - must set up as early as possible
