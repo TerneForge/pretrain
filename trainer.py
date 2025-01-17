@@ -1,5 +1,10 @@
 from transformers import Trainer
 import torch
+import torch.nn as nn
+import torch.amp as amp
+import shutil
+import torch.distributed as dist
+import os
 from eval_utils import DataCollatorForHellaSwag, HellaswagMetrics, HellaSwagDataset
 from typing import Dict, List, Optional, Union
 from torch.utils.data import Dataset, DataLoader
@@ -7,14 +12,17 @@ import math
 import time
 from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
 from transformers.integrations.tpu import tpu_spmd_dataloader
+from transformers.integrations.deepspeed import deepspeed_init, deepspeed_load_checkpoint
 from transformers.trainer_utils import speed_metrics
-from transformers.utils import is_torch_xla_available
+from transformers.utils import is_torch_xla_available, is_sagemaker_mp_enabled
 import sys
 from packaging import version
-from transformers.trainer_pt_utils import nested_detach
-from transformers.trainer_utils import has_length
-from transformers.utils import logging
-
+from transformers.trainer_pt_utils import nested_detach, get_model_param_count
+from transformers.trainer_utils import has_length, TrainOutput, HPSearchBackend
+from transformers.utils import logging, is_accelerate_available
+from transformers.training_args import OptimizerNames, ParallelMode
+from transformers.trainer_callback import TrainerState, ExportableState
+from transformers.integrations import hp_params
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -28,7 +36,39 @@ if is_torch_xla_available():
 else:
     IS_XLA_FSDPV2_POST_2_2 = False
 
+if is_accelerate_available():
+    from accelerate import Accelerator, skip_first_batches
+    from accelerate import __version__ as accelerate_version
+    from accelerate.state import AcceleratorState
+    from accelerate.utils import (
+        AutocastKwargs,
+        DistributedDataParallelKwargs,
+        DistributedType,
+        load_fsdp_model,
+        load_fsdp_optimizer,
+        save_fsdp_model,
+        save_fsdp_optimizer,
+    )
+
+if is_sagemaker_mp_enabled():
+    import smdistributed.modelparallel.torch as smp
+
 logger = logging.get_logger(__name__)
+
+def _is_peft_model(model):
+    import importlib
+    from transformers.utils import is_peft_available
+    if is_peft_available():
+        classes_to_check = (PeftModel,) if is_peft_available() else ()
+        # Here we also check if the model is an instance of `PeftMixedModel` introduced in peft>=0.7.0: https://github.com/huggingface/transformers/pull/28321
+        if version.parse(importlib.metadata.version("peft")) >= version.parse("0.7.0"):
+            from peft import PeftMixedModel
+
+            classes_to_check = (*classes_to_check, PeftMixedModel)
+        return isinstance(model, classes_to_check)
+    return False
+
+TRAINER_STATE_NAME = "trainer_state.json"
 
 class MinimalTrainer(Trainer):
     def __init__(self, *args, **kwargs):

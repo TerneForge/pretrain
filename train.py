@@ -184,8 +184,7 @@ def prepare_data(tokenizer,
     train_dataset = PretrainDataset(train_dataset=train_dataset,
                                       eos_token_id=tokenizer.eos_token_id,
                                       skip=skip)
-    data_collator = DataCollatorForPretrainDataset(data_args=data_args,
-                                                     tokenizer=tokenizer)
+    data_collator = DataCollatorForPretrainDataset(data_args=data_args)
     print("starting eval download")
     val_dataset = datasets.load_dataset("semran1/packed_40B", split="train", data_dir = "valid")
     return dict(train_dataset=train_dataset,

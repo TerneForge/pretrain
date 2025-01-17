@@ -6,3 +6,4 @@ requests
 zstandard
 datasets
 flash_attn
+accelerate
