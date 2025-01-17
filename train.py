@@ -134,7 +134,7 @@ class PretrainDataset(Dataset):
         if f is not None:
             idx = self.available_idx[f]
 
-        ipt_ids = self.sources[idx]["token_ids"]
+        ipt_ids = self.sources[idx]["input_ids"]
         # the logic here doesn't seem to make sense, but internally transformers handles it
         results = dict(input_ids=ipt_ids,
                        labels=copy.deepcopy(ipt_ids),
@@ -177,6 +177,7 @@ def prepare_data(tokenizer,
     # load the dataset
     # since we're following LLM 360 for data, we need to change this
     train_dataset = datasets.load_dataset("semran1/packed_40B", split="train", data_dir="valid")
+    train_dataset = train_dataset.rename_column("token_ids", "input_ids")
 
     print(f"train dataset size: {len(train_dataset)}")
     train_dataset = PretrainDataset(train_dataset=train_dataset,
@@ -185,6 +186,7 @@ def prepare_data(tokenizer,
     data_collator = DataCollatorForPretrainDataset(data_args=data_args)
     print("starting eval download")
     val_dataset = datasets.load_dataset("semran1/packed_40B", split="train", data_dir = "valid")
+    val_dataset = val_dataset.rename_column("token_ids", "input_ids")
     return dict(train_dataset=train_dataset,
                 eval_dataset=val_dataset,
                 data_collator=data_collator)
