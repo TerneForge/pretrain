@@ -177,7 +177,7 @@ def prepare_data(tokenizer,
 
     # load the dataset
     # since we're following LLM 360 for data, we need to change this
-    train_dataset = datasets.load_dataset("semran1/packed_40B", split="train", data_dir="valid")
+    train_dataset = datasets.load_dataset("semran1/cosmo_4b_tk", split="train")
     train_dataset = train_dataset.rename_column("token_ids", "input_ids")
 
     print(f"train dataset size: {len(train_dataset)}")
