@@ -73,7 +73,7 @@ TRAINER_STATE_NAME = "trainer_state.json"
 class MinimalTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.hellaswag_dataset = IterableHellaSwagDataset()
+        self.hellaswag_dataset = HellaSwagDataset()
 
     def _prepare_input(self, data):
         """
