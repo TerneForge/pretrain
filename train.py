@@ -177,18 +177,17 @@ def prepare_data(tokenizer,
 
     # load the dataset
     # since we're following LLM 360 for data, we need to change this
-    train_dataset = datasets.load_dataset("semran1/cosmo_4b_tk", split="train")
-    train_dataset = train_dataset.rename_column("token_ids", "input_ids")
-
-    print(f"train dataset size: {len(train_dataset)}")
-    train_dataset = PretrainDataset(train_dataset=train_dataset,
-                                      eos_token_id=tokenizer.eos_token_id,
-                                      skip=skip)
+    #train_dataset = datasets.load_dataset("semran1/cosmo_4b_tk", split="train")
+    #train_dataset = train_dataset.rename_column("token_ids", "input_ids")
+    #print(f"train dataset size: {len(train_dataset)}")
+    #train_dataset = PretrainDataset(train_dataset=train_dataset,
+    #                                  eos_token_id=tokenizer.eos_token_id,
+    #                                  skip=skip)
     data_collator = DataCollatorForPretrainDataset(data_args=data_args)
     print("starting eval download")
     val_dataset = datasets.load_dataset("semran1/packed_40B", split="train", data_dir = "valid")
     val_dataset = val_dataset.rename_column("token_ids", "input_ids")
-    return dict(train_dataset=train_dataset,
+    return dict(train_dataset=val_dataset,
                 eval_dataset=val_dataset,
                 data_collator=data_collator)
 
