@@ -205,13 +205,17 @@ class MinimalTrainer(Trainer):
                 psbs = logits.shape[0] // 4
                 logits = logits.reshape(psbs, 4, logits.shape[-2], logits.shape[-1])
                 tokens = tokens.reshape(psbs, 4, logits.shape[-2])
+                mask = logits.reshape(psbs, 4, logits.shape[-2])
+
                 logits = self.gather_function((logits))
                 labels = self.gather_function((labels))
                 tokens = self.gather_function((tokens))
+                mask = self.gather_function((mask))
                 # monkey patch
                 is_last_step = self.accelerator.gradient_state.end_of_dataloader
                 logits= logits.reshape(logits.shape[0]*4, logits.shape[-2], logits.shape[-1])
                 tokens = tokens.reshape(tokens.shape[0]*4, tokens.shape[-1])
+                mask = tokens.reshape(mask.shape[0]*4, mask.shape[-1])
                 output = metrics(logits, tokens, labels, mask, is_last_step)
                 del tokens, logits, labels, inputs
                 torch.cuda.empty_cache()
