@@ -152,7 +152,7 @@ class DataCollatorForHellaSwag:
         # Initialize tensors - preserving the 4 choices dimension
         tokens = torch.full(
             (batch_size, 4, max_len), 
-            self.pad_token_id, 
+            -100, 
             dtype=torch.long
         )
         
@@ -174,7 +174,6 @@ class DataCollatorForHellaSwag:
         
         # Reshape tokens to flatten the choices dimension into batch dimension
         tokens = tokens.view(batch_size * 4, max_len)
-        label_tokens = label_tokens.view(batch_size * 4, max_len)
         label_mask = label_mask.view(batch_size * 4, max_len)
             
         return {
@@ -216,8 +215,8 @@ class HellaswagMetrics:
         preds_norm = avg_loss.argmin(dim=-1)
 
         # Accumulate stats
-        self.correct += (preds == labels.label).sum().item()
-        self.correct_norm += (preds_norm == labels.label).sum().item()
+        self.correct += (preds == labels).sum().item()
+        self.correct_norm += (preds_norm == labels).sum().item()
         self.total += len(preds)
 
         if compute_last:

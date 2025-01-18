@@ -108,10 +108,14 @@ class MinimalTrainer(Trainer):
         ignore_keys: Optional[List[str]] = None,
         metric_key_prefix: str = "eval",
         ) -> Dict[str, float]:
+        start = time.time()
         self.compute_metrics = None
         # validation = super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
         hellaswag = self.evaluate_hellaswag(self.hellaswag_dataset)
-        metrics = hellaswag # alidation # validation | hellaswag
+        metrics = hellaswag # validation | hellaswag
+        end = time.time()
+        elapsed = start - end
+        metrics["total_elapsed_time"] = elapsed
         return metrics
     # need to modify get_eval_dataloader
     def evaluate_hellaswag(
@@ -185,9 +189,9 @@ class MinimalTrainer(Trainer):
         metrics = HellaswagMetrics()
         with torch.no_grad():
             for step, inputs in enumerate(eval_dataloader):
-                tokens = inputs.input_ids
-                labels = inputs.labels
-                mask = inputs.mask
+                tokens = inputs["input_ids"]
+                labels = inputs["labels"]
+                mask = inputs["mask"]
                 model_inputs = {"input_ids": tokens}
                 out = model(**model_inputs)
                 logits = out.logits
@@ -236,10 +240,10 @@ class MinimalTrainer(Trainer):
             if eval_dataset is not None
             else self.eval_dataset
         )
-        data_collator = DataCollatorForHellaSwag
+        data_collator = DataCollatorForHellaSwag()
 
         dataloader_params = {
-            "batch_size": self.args.eval_batch_size,
+            "batch_size": self.args.eval_batch_size // 4,
             "collate_fn": data_collator,
             "num_workers": self.args.dataloader_num_workers,
             "pin_memory": self.args.dataloader_pin_memory,
