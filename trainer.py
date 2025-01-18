@@ -110,12 +110,13 @@ class MinimalTrainer(Trainer):
         ) -> Dict[str, float]:
         start = time.time()
         self.compute_metrics = None
-        # validation = super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
+        validation = super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
         hellaswag = self.evaluate_hellaswag(self.hellaswag_dataset)
-        metrics = hellaswag # validation | hellaswag
         end = time.time()
-        elapsed = start - end
-        metrics["total_elapsed_time"] = elapsed
+        elapsed = end - start
+        hellaswag["eval_hellaswag_elapsed_time"] = elapsed
+        self.log(hellaswag)
+        metrics = validation | hellaswag
         return metrics
     # need to modify get_eval_dataloader
     def evaluate_hellaswag(
@@ -197,13 +198,20 @@ class MinimalTrainer(Trainer):
                 logits = out.logits
                 logits = nested_detach(logits)
                 # now we need to all gather
-                tokens = self.accelerator.pad_across_processes(tokens, dim=1, pad_index=-100)
+                tokens = self.accelerator.pad_across_processes(tokens, dim=1, pad_index=0)
                 # labels = self.accelerator.pad_across_processes(labels, dim=1, pad_index=-100)
-                logits = self.accelerator.pad_across_processes(logits, dim=1, pad_index=-100)
+                logits = self.accelerator.pad_across_processes(logits, dim=1, pad_index=0)
+                # need to fix this for all gather distributed
+                psbs = logits.shape[0] // 4
+                logits = logits.reshape(psbs, 4, logits.shape[-2], logits.shape[-1])
+                tokens = tokens.reshape(psbs, 4, logits.shape[-2])
                 logits = self.gather_function((logits))
                 labels = self.gather_function((labels))
                 tokens = self.gather_function((tokens))
+                # monkey patch
                 is_last_step = self.accelerator.gradient_state.end_of_dataloader
+                logits= logits.reshape(logits.shape[0]*4, logits.shape[-2], logits.shape[-1])
+                tokens = tokens.reshape(tokens.shape[0]*4, tokens.shape[-1])
                 output = metrics(logits, tokens, labels, mask, is_last_step)
                 del tokens, logits, labels, inputs
                 torch.cuda.empty_cache()
@@ -243,7 +251,7 @@ class MinimalTrainer(Trainer):
         data_collator = DataCollatorForHellaSwag()
 
         dataloader_params = {
-            "batch_size": self.args.eval_batch_size // 4,
+            "batch_size": self.args.eval_batch_size,
             "collate_fn": data_collator,
             "num_workers": self.args.dataloader_num_workers,
             "pin_memory": self.args.dataloader_pin_memory,
@@ -686,9 +694,12 @@ class MinimalTrainer(Trainer):
                     f" num_steps ({max_steps}) higher than the number of available samples."
                 )
                 self.control.should_training_stop = True
+            
+            if start_time is None:
+                start_time = time.time()
 
             self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
-            self._maybe_log_save_evaluate(tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval)
+            self._maybe_log_save_evaluate(tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, start_time)
 
             if DebugOption.TPU_METRICS_DEBUG in self.args.debug:
                 if is_torch_xla_available():
