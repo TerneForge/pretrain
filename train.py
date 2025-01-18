@@ -35,7 +35,7 @@ WORLD_SIZE = int(os.getenv("WORLD_SIZE", "1"))
 
 @dataclass
 class ModelArguments:
-    model_name_or_path: Optional[str] = field(default="microsoft/phi-1_5")
+    model_name_or_path: Optional[str] = field(default="semran1/hyperq-phi")
     flash_attention: Optional[bool] = field(default=True)
     config_dtype: Optional[str] = field(default="bfloat16")
 
@@ -86,7 +86,7 @@ class TrainingArguments(transformers.TrainingArguments):
     save_steps: int = 1000
     save_total_limit = 4
     eval_strategy: str = "steps"
-    eval_steps: int = 1000
+    eval_steps: int = 2
 
     update_trained_steps_and_epochs: bool = field(  # whether to start a new curriculum phase
         default=False,
