@@ -73,11 +73,11 @@ class TrainingArguments(transformers.TrainingArguments):
     lr_scheduler_type: str = "linear"
     num_train_epochs: float = 1.0
     optim: str = "paged_adamw_8bit"
-    per_device_train_batch_size: int = 2
-    gradient_accumulation_steps: int = 4
+    per_device_train_batch_size: int = 16
+    gradient_accumulation_steps: int = 2
 
     # optimize performance and memory
-    per_device_eval_batch_size: int = 8  # TODO: auto-find?
+    per_device_eval_batch_size: int = 16  # TODO: auto-find?
     gradient_checkpointing: bool = True
     bf16: bool = True
 
@@ -86,7 +86,7 @@ class TrainingArguments(transformers.TrainingArguments):
     save_steps: int = 1000
     save_total_limit = 4
     eval_strategy: str = "steps"
-    eval_steps: int = 1
+    eval_steps: int = 1000
 
     update_trained_steps_and_epochs: bool = field(  # whether to start a new curriculum phase
         default=False,
