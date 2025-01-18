@@ -86,7 +86,7 @@ class TrainingArguments(transformers.TrainingArguments):
     save_steps: int = 1000
     save_total_limit = 4
     eval_strategy: str = "steps"
-    eval_steps: int = 20
+    eval_steps: int = 1
 
     update_trained_steps_and_epochs: bool = field(  # whether to start a new curriculum phase
         default=False,
