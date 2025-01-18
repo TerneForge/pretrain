@@ -109,9 +109,9 @@ class MinimalTrainer(Trainer):
         metric_key_prefix: str = "eval",
         ) -> Dict[str, float]:
         self.compute_metrics = None
-        validation = super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
-        # hellaswag = self.evaluate_hellaswag(self.hellaswag_dataset)
-        metrics = validation # validation | hellaswag
+        # validation = super().evaluate(eval_dataset, ignore_keys, metric_key_prefix)
+        hellaswag = self.evaluate_hellaswag(self.hellaswag_dataset)
+        metrics = hellaswag # alidation # validation | hellaswag
         return metrics
     # need to modify get_eval_dataloader
     def evaluate_hellaswag(

@@ -156,7 +156,7 @@ class DataCollatorForPretrainDataset:
     def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
         r = dict(
             input_ids=torch.tensor([d["input_ids"] for d in instances]),
-            labels=torch.tensor([d["labels"] for d in instances]),
+            labels=torch.tensor([copy.deepcopy(d["input_ids"]) for d in instances]),
             # unclear as to exactly why idx doesn't get collated properly
         )
         # if "position_ids" in instances[0]:  # for doc attention mask
