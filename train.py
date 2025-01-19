@@ -80,10 +80,10 @@ class TrainingArguments(transformers.TrainingArguments):
     per_device_eval_batch_size: int = 16  # TODO: auto-find?
     gradient_checkpointing: bool = True
     bf16: bool = True
-
+    resume_from_checkpoint : str= "./phi/checkpoint-18"
     logging_steps: int = 10
     save_strategy: str = "steps"
-    save_steps: int = 1000
+    save_steps: int = 6
     save_total_limit = 4
     eval_strategy: str = "steps"
     eval_steps: int = 2
@@ -238,6 +238,7 @@ def train():
             for c in glob.glob(f"{model_args.model_name_or_path}/checkpoint-*")
             if os.path.basename(c).split("-")[1].isdigit()
         ]
+        print("HERE ARE THE CHECKPOINTS", checkpoints)
         if len(checkpoints) > 0:
             model_args.model_name_or_path = max(
                 checkpoints, key=lambda x: int(os.path.basename(x).split("-")[1]))
@@ -324,10 +325,10 @@ def train():
 
     # Modify `trainer_state.json`. This is necessary because HF Trainer, when there's a conflict between CLI arguments and parameters in the JSON file, prioritizes the JSON parameters. Therefore, we need to manually overwrite the JSON parameters with the CLI arguments.
     if training_args.resume_from_checkpoint:
-
+        
         with open(os.path.join(training_args.resume_from_checkpoint, "trainer_state.json")) as f:
             state = json.load(f)
-
+        print("loaded checkpoint:", training_args.resume_from_checkpoint)
         torch.distributed.barrier()
 
         if state["train_batch_size"] != training_args.per_device_train_batch_size:
