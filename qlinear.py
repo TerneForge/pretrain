@@ -11,7 +11,8 @@ def modified_weight_quant(w):
     """
     # modified via different scale multiplication, and no internal scaling factor
     # note that the quantized weights, post PTQ should be in the integer/scaling factor format
-    scale = 1.0 / w.abs().max().clamp_(min=1e-5) # original has it be based off mean, but since we initialize differently, we change it
+    m = w.abs().mean() * 0.8
+    scale = 1.0 / m.clamp_(min=1e-5) # original has it be based off mean, but since we initialize differently, we change it
     u = (w * scale).round().clamp_(-1, 1) 
     return u
 
