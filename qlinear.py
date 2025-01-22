@@ -11,10 +11,15 @@ def modified_weight_quant(w):
     """
     # modified via different scale multiplication, and no internal scaling factor
     # note that the quantized weights, post PTQ should be in the integer/scaling factor format
-    m = w.abs().mean() * 0.8
-    scale = 1.0 / m.clamp_(min=1e-5) # original has it be based off mean, but since we initialize differently, we change it
-    u = (w * scale).round().clamp_(-1, 1) 
+    # m = w.abs().mean() * 0.8
+    # scale = 1.0 / m.clamp_(min=1e-5) # original has it be based off mean, but since we initialize differently, we change it
+    # u = (w * scale).round().clamp_(-1, 1)
+    u = w.clamp(-1, 1).round() 
     return u
+
+def normalize(w):
+    w = w / torch.norm(w, dim=1, keepdim=True) 
+    return w
 
 class QLinear(nn.Linear):
     def __init__(self,
@@ -40,6 +45,7 @@ class QLinear(nn.Linear):
         x = x.to(w_quant.device)
         # STE weight quantization
         w_quant = w_quant + (self.quantizer(w_quant) - w_quant).detach()
+        w_quant = normalize(w_quant)
         y = F.linear(x, w_quant) 
         # apply scales post matmul
         y = y * self.scales
