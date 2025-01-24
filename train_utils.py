@@ -26,10 +26,12 @@ def print_rank0(*arg):
 class LogCallback(TrainerCallback):
 
     def on_log(self, args, state, control, model, logs=None, **kwargs):
-        logs["train/global_step"] = state.global_step
-        logs["train/epoch"] = state.epoch
-        logs['train/total_flos'] = state.total_flos
-        wandb.config.update({'global_step': state.global_step},
+        if int(os.getenv("RANK", "0")) == 0:
+
+            logs["train/global_step"] = state.global_step
+            logs["train/epoch"] = state.epoch
+            logs['train/total_flos'] = state.total_flos
+            wandb.config.update({'global_step': state.global_step},
                             allow_val_change=True)
 
 

@@ -35,7 +35,7 @@ WORLD_SIZE = int(os.getenv("WORLD_SIZE", "1"))
 
 @dataclass
 class ModelArguments:
-    model_name_or_path: Optional[str] = field(default="semran1/hyperq-phi")
+    model_name_or_path: Optional[str] = field(default="kaizen9/phi-1_5_HQ_6000_200k_FP")
     flash_attention: Optional[bool] = field(default=True)
     config_dtype: Optional[str] = field(default="bfloat16")
 
@@ -67,26 +67,28 @@ class TrainingArguments(transformers.TrainingArguments):
     profile: bool = field(default=False)
     # NOTE: insert the 8bit adamw etc here. I think we want to just go linear and copy the og paper
     # also need to tune lr a little 
-    learning_rate: float = 3e-4
+    learning_rate: float = 6e-5
     max_grad_norm: float = 1.0
-    warmup_ratio: float = 0.05 # or however much is like 500 steps
-    lr_scheduler_type: str = "linear"
+    #warmup_ratio: float = 0.05 # or however much is like 500 steps
+    warmup_steps: int = 200
+    lr_scheduler_type: str = "cosine"
     num_train_epochs: float = 1.0
-    optim: str = "paged_adamw_8bit"
-    per_device_train_batch_size: int = 16
-    gradient_accumulation_steps: int = 2
+    max_steps: int =6000
+    optim: str = "adamw_torch_fused"
+    per_device_train_batch_size: int = 8
+    gradient_accumulation_steps: int = 1
 
     # optimize performance and memory
     per_device_eval_batch_size: int = 16  # TODO: auto-find?
     gradient_checkpointing: bool = True
     bf16: bool = True
-    resume_from_checkpoint : str= "./phi/checkpoint-18"
-    logging_steps: int = 10
+    #resume_from_checkpoint : str= "./phi/checkpoint-18"
+    logging_steps: int = 1
     save_strategy: str = "steps"
-    save_steps: int = 6
-    save_total_limit = 4
+    save_steps: int = 1000
+    save_total_limit = 10
     eval_strategy: str = "steps"
-    eval_steps: int = 2
+    eval_steps: int = 500
 
     update_trained_steps_and_epochs: bool = field(  # whether to start a new curriculum phase
         default=False,
@@ -177,16 +179,18 @@ def prepare_data(tokenizer,
 
     # load the dataset
     # since we're following LLM 360 for data, we need to change this
-    data_files = ['train/train_0.jsonl', 'train/train_1.jsonl', 'train/train_3.jsonl', 'train/train_4.jsonl']
-    train_dataset = datasets.load_dataset("semran1/packed_40B", split="train", data_files=data_files)
-    #train_dataset = train_dataset.rename_column("token_ids", "input_ids")
+    #data_files = ['train/train_0.jsonl', 'train/train_1.jsonl']#, 'train/train_3.jsonl', 'train/train_4.jsonl']
+    data_files = ['train/train_13.jsonl', 'train/train_11.jsonl', 'train/train_12.jsonl']
+
+    train_dataset = datasets.load_dataset("semran1/packed_20B", split="train", data_files=data_files)
+    train_dataset = train_dataset.rename_column("token_ids", "input_ids")
     print(f"train dataset size: {len(train_dataset)}")
     train_dataset = PretrainDataset(train_dataset=train_dataset,
                                      eos_token_id=tokenizer.eos_token_id,
                                      skip=skip)
     data_collator = DataCollatorForPretrainDataset(data_args=data_args)
     print("starting eval download")
-    val_dataset = datasets.load_dataset("semran1/packed_40B", split="train", data_dir = "valid")
+    val_dataset = datasets.load_dataset("semran1/packed_20B", split="train", data_dir = "valid")
     val_dataset = val_dataset.rename_column("token_ids", "input_ids")
     return dict(train_dataset=train_dataset,
                 eval_dataset=val_dataset,
@@ -227,7 +231,8 @@ def get_model_tokenizer(model_args, data_args, training_args):
 
 
 def train():
-    wandb.login(key="Bd8e3eb1919976284f0e2615608b1d7af8bdf98b")
+    if RANK == 0:
+        wandb.login(key="Bd8e3eb1919976284f0e2615608b1d7af8bdf98b")
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
@@ -278,31 +283,32 @@ def train():
         pprint(data_args.__dict__)
         pprint(training_args.__dict__)
 
-    config = {"rank": RANK}
-    config.update(model_args.__dict__)
-    config.update(data_args.__dict__)
-    for key, value in training_args.__dict__.items():
-        try:
-            json.dumps(value)
-        except Exception:
-            print(
-                f"Key '{key}' contains non-serializable value: {value} (type: {type(value)})"
-            )
-            continue
+        config = {"rank": RANK}
+        config.update(model_args.__dict__)
+        config.update(data_args.__dict__)
+        for key, value in training_args.__dict__.items():
+            try:
+                json.dumps(value)
+            except Exception:
+                print(
+                    f"Key '{key}' contains non-serializable value: {value} (type: {type(value)})"
+                )
+                continue
         config.update({key: value})
 
-    wandb_path = "log-wandb/" # training_args.log_dir.replace("log/", "log-wandb/", 1)
-    if RANK == 0:
+        wandb_path = "log-wandb/" # training_args.log_dir.replace("log/", "log-wandb/", 1)
+        #if RANK == 0:
         print(f"wandb_path: {wandb_path}")
-    os.makedirs(wandb_path, exist_ok=True)
-    wandb.init(project="qphi",
+        os.makedirs(wandb_path, exist_ok=True)
+         #if RANK == 0:
+        wandb.init(project="qphi",
                resume="allow",
                group=training_args.run_name,
                name=training_args.run_name,
                config=config,
                dir=wandb_path)
-    wandb.define_metric("train/global_step")
-    wandb.define_metric("train/*", step_metric="train/global_step")
+        wandb.define_metric("train/global_step")
+        wandb.define_metric("train/*", step_metric="train/global_step")
 
     if training_args.gradient_checkpointing:
         training_args.gradient_checkpointing_kwargs = {
