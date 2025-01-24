@@ -67,14 +67,14 @@ class TrainingArguments(transformers.TrainingArguments):
     profile: bool = field(default=False)
     # NOTE: insert the 8bit adamw etc here. I think we want to just go linear and copy the og paper
     # also need to tune lr a little 
-    learning_rate: float = 6e-5
+    learning_rate: float = 1e-3
     max_grad_norm: float = 1.0
     #warmup_ratio: float = 0.05 # or however much is like 500 steps
     warmup_steps: int = 200
-    lr_scheduler_type: str = "cosine"
+    lr_scheduler_type: str = "linear"
     num_train_epochs: float = 1.0
-    max_steps: int =6000
-    optim: str = "adamw_torch_fused"
+    max_steps: int = 6000
+    optim: str = "adamw_hf" # adamw_hf -> cautious adamw
     per_device_train_batch_size: int = 8
     gradient_accumulation_steps: int = 1
 

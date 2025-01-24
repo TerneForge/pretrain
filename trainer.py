@@ -23,6 +23,7 @@ from transformers.utils import logging, is_accelerate_available
 from transformers.training_args import OptimizerNames, ParallelMode
 from transformers.trainer_callback import TrainerState, ExportableState
 from transformers.integrations import hp_params
+from cadamw import AdamW
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -101,6 +102,22 @@ class MinimalTrainer(Trainer):
                 })
             return data.to(**kwargs, non_blocking=True)
         return data
+    
+    @staticmethod
+    def get_optimizer_cls_and_kwargs(
+        args, model):
+        optimizer_kwargs = {"lr": args.learning_rate}
+
+        adam_kwargs = {
+            "betas": (args.adam_beta1, args.adam_beta2),
+            "eps": args.adam_epsilon,
+        }
+        if args.optim == OptimizerNames.ADAMW_HF:
+            optimizer_cls = AdamW
+            optimizer_kwargs.update(adam_kwargs)
+        else:
+            optimizer_cls, optimizer_kwargs = super().get_optimizer_cls_and_kwargs(args, model)
+        return optimizer_cls, optimizer_kwargs
     
     # modify this method to run hellaswag
     def evaluate(self,
