@@ -75,6 +75,7 @@ class MinimalTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.hellaswag_dataset = HellaSwagDataset()
+        self.muon = True # hardcoded
 
     def _prepare_input(self, data):
         """
@@ -103,6 +104,28 @@ class MinimalTrainer(Trainer):
             return data.to(**kwargs, non_blocking=True)
         return data
     
+    def create_optimizer(self):
+        """
+        Setup the optimizer.
+
+        We provide a reasonable default that works well. If you want to use something else, you can pass a tuple in the
+        Trainer's init through `optimizers`, or subclass and override this method in a subclass.
+        """
+        if not self.muon:
+            return super().create_optimizer()
+        else:
+            from muon import Muon
+            opt_model = self.model
+            muon_params = [p for p in opt_model.model.layers.parameters() if p.ndim >= 2 ]
+            # Find everything else -- these will be optimized by AdamW
+            adamw_params = [p for p in opt_model.model.layers.parameters() if p.ndim < 2]
+            adamw_params.extend(opt_model.lm_head.parameters())
+            adamw_params.extend(opt_model.model.embed_tokens.parameters())
+            optimizer = Muon(muon_params, lr=1e-3, momentum=0.95,
+                 adamw_params=adamw_params, adamw_lr=3e-4, adamw_betas=(0.90, 0.95), adamw_wd=0.0)
+            self.optimizer = optimizer
+            return self.optimizer
+
     @staticmethod
     def get_optimizer_cls_and_kwargs(
         args, model):
