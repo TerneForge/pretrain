@@ -70,12 +70,12 @@ class TrainingArguments(transformers.TrainingArguments):
     learning_rate: float = 1e-3
     max_grad_norm: float = 1.0
     #warmup_ratio: float = 0.05 # or however much is like 500 steps
-    warmup_steps: int = 200
+    warmup_steps: int = 300
     lr_scheduler_type: str = "linear"
     num_train_epochs: float = 1.0
-    max_steps: int = 6000
+    max_steps: int = 10000
     optim: str = "adamw_hf" # adamw_hf -> cautious adamw
-    per_device_train_batch_size: int = 8
+    per_device_train_batch_size: int = 36
     gradient_accumulation_steps: int = 1
 
     # optimize performance and memory
@@ -88,7 +88,7 @@ class TrainingArguments(transformers.TrainingArguments):
     save_steps: int = 1000
     save_total_limit = 10
     eval_strategy: str = "steps"
-    eval_steps: int = 500
+    eval_steps: int = 1000
 
     update_trained_steps_and_epochs: bool = field(  # whether to start a new curriculum phase
         default=False,
@@ -182,7 +182,7 @@ def prepare_data(tokenizer,
     #data_files = ['train/train_0.jsonl', 'train/train_1.jsonl']#, 'train/train_3.jsonl', 'train/train_4.jsonl']
     data_files = ['train/train_13.jsonl', 'train/train_11.jsonl', 'train/train_12.jsonl']
 
-    train_dataset = datasets.load_dataset("semran1/packed_20B", split="train", data_files=data_files)
+    train_dataset = datasets.load_dataset("semran1/packed_35B", split="train", data_files=data_files)
     train_dataset = train_dataset.rename_column("token_ids", "input_ids")
     print(f"train dataset size: {len(train_dataset)}")
     train_dataset = PretrainDataset(train_dataset=train_dataset,
@@ -190,7 +190,7 @@ def prepare_data(tokenizer,
                                      skip=skip)
     data_collator = DataCollatorForPretrainDataset(data_args=data_args)
     print("starting eval download")
-    val_dataset = datasets.load_dataset("semran1/packed_20B", split="train", data_dir = "valid")
+    val_dataset = datasets.load_dataset("semran1/packed_35B", split="train", data_dir = "valid")
     val_dataset = val_dataset.rename_column("token_ids", "input_ids")
     return dict(train_dataset=train_dataset,
                 eval_dataset=val_dataset,
