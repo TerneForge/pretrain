@@ -24,6 +24,7 @@ from transformers.training_args import OptimizerNames, ParallelMode
 from transformers.trainer_callback import TrainerState, ExportableState
 from transformers.integrations import hp_params
 from cadamw import AdamW
+torch._dynamo.config.optimize_ddp = False
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -76,6 +77,15 @@ class MinimalTrainer(Trainer):
         super().__init__(*args, **kwargs)
         self.hellaswag_dataset = HellaSwagDataset()
         self.muon = True # hardcoded
+    def save_model(self, output_dir=None, _internal_call=False):
+        # 1. Unwrap compiled model
+        model_to_save = self.model
+        while hasattr(model_to_save, "_orig_mod"):
+            model_to_save = model_to_save._orig_mod  # ← Gets original HF model
+        # 2. Call original saving logic (weights, optimizer, etc)
+        super().save_model(output_dir, _internal_call)  # ← Parent class handling
+        # 3. Force-save config (extra safeguard)
+        model_to_save.config.save_pretrained(output_dir)  # ← Your critical addition
 
     def _prepare_input(self, data):
         """

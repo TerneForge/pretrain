@@ -212,6 +212,8 @@ def get_model_tokenizer(model_args, data_args, training_args):
         if model_args.flash_attention else None,
         torch_dtype=getattr(torch, model_args.config_dtype)
     )
+    model.to('cuda')
+    model = torch.compile(model)
     tokenizer = AutoTokenizer.from_pretrained(
         model_name_or_path,
         padding_side="right",
