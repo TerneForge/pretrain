@@ -46,6 +46,7 @@ from transformers.utils import (
 )
 from configuration_phi import PhiConfig
 import liger_kernel
+from liger_kernel.transformers import LigerLayerNorm, LigerCrossEntropyLoss
 
 logger = logging.get_logger(__name__)
 
@@ -239,7 +240,7 @@ class PhiDecoderLayer(nn.Module):
         super().__init__()
         self.self_attn = PhiAttention(config, layer_idx=layer_idx)
         self.mlp = PhiMLP(config)
-        self.input_layernorm = liger_kernel.transformers.LigerLayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.input_layernorm = LigerLayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
 
     def forward(
@@ -488,7 +489,7 @@ class PhiModel(PhiPreTrainedModel):
         self.rotary_emb = PhiRotaryEmbedding(config=config)
         self.gradient_checkpointing = False
         self.embed_dropout = nn.Dropout(config.embd_pdrop)
-        self.final_layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.final_layernorm = LigerLayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -741,7 +742,7 @@ class QPhiForCausalLM(PhiPreTrainedModel, GenerationMixin):
         self.model = PhiModel(config)
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=True)
-        self.liger_loss = liger_kernel.transformers.LigerCrossEntropyLoss()
+        self.liger_loss = LigerCrossEntropyLoss()
         # Initialize weights and apply final processing
         self.post_init()
 
