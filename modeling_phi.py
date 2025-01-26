@@ -45,7 +45,7 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 from configuration_phi import PhiConfig
-
+import liger_kernel
 
 logger = logging.get_logger(__name__)
 
@@ -239,7 +239,7 @@ class PhiDecoderLayer(nn.Module):
         super().__init__()
         self.self_attn = PhiAttention(config, layer_idx=layer_idx)
         self.mlp = PhiMLP(config)
-        self.input_layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.input_layernorm = liger_kernel.transformers.LigerLayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
 
     def forward(
@@ -741,7 +741,7 @@ class QPhiForCausalLM(PhiPreTrainedModel, GenerationMixin):
         self.model = PhiModel(config)
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=True)
-
+        self.liger_loss = liger_kernel.transformers.LigerCrossEntropyLoss()
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -838,7 +838,8 @@ class QPhiForCausalLM(PhiPreTrainedModel, GenerationMixin):
 
         loss = None
         if labels is not None:
-            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
+            # loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
+            loss = self.liger_loss(logits, labels)
 
         if not return_dict:
             output = (logits,) + outputs[1:]
