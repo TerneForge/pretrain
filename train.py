@@ -212,6 +212,8 @@ def get_model_tokenizer(model_args, data_args, training_args):
         if model_args.flash_attention else None,
         torch_dtype=getattr(torch, model_args.config_dtype)
     )
+    model.model.embed_tokens.weight.register_hook(lambda grad: torch.zeros_like(grad))
+    model.lm_head.weight.register_hook(lambda grad: torch.zeros_like(grad))
     tokenizer = AutoTokenizer.from_pretrained(
         model_name_or_path,
         padding_side="right",
