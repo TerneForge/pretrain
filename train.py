@@ -70,12 +70,12 @@ class TrainingArguments(transformers.TrainingArguments):
     learning_rate: float = 1e-3
     max_grad_norm: float = 1.0
     #warmup_ratio: float = 0.05 # or however much is like 500 steps
-    warmup_steps: int = 200
+    warmup_steps: int = 300
     lr_scheduler_type: str = "linear"
     num_train_epochs: float = 1.0
-    max_steps: int = 2
+    max_steps: int = 10000
     optim: str = "adamw_hf" # adamw_hf -> cautious adamw
-    per_device_train_batch_size: int = 8
+    per_device_train_batch_size: int = 36
     gradient_accumulation_steps: int = 1
 
     # optimize performance and memory
@@ -212,6 +212,8 @@ def get_model_tokenizer(model_args, data_args, training_args):
         if model_args.flash_attention else None,
         torch_dtype=getattr(torch, model_args.config_dtype)
     )
+    model.to('cuda')
+    model = torch.compile(model)
     model.model.embed_tokens.weight.register_hook(lambda grad: torch.zeros_like(grad))
     model.lm_head.weight.register_hook(lambda grad: torch.zeros_like(grad))
     tokenizer = AutoTokenizer.from_pretrained(

@@ -1,3 +1,3 @@
-nohup accelerate launch train.py --output_dir phi_200_morelogwarmup_adamw> run_morelog.log 2>&1 &
+nohup accelerate launch train.py --output_dir phi_noembd_72> phi_noembd_72.log 2>&1 &
 
 
