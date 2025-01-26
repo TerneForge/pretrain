@@ -839,8 +839,8 @@ class QPhiForCausalLM(PhiPreTrainedModel, GenerationMixin):
 
         loss = None
         if labels is not None:
-            # loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
-            loss = self.liger_loss(logits, labels)
+            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
+            # loss = self.liger_loss(logits, labels)
 
         if not return_dict:
             output = (logits,) + outputs[1:]
