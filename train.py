@@ -35,7 +35,7 @@ WORLD_SIZE = int(os.getenv("WORLD_SIZE", "1"))
 
 @dataclass
 class ModelArguments:
-    model_name_or_path: Optional[str] = field(default="kaizen9/phi-1_5_HQ_6000_200k_FP")
+    model_name_or_path: Optional[str] = field(default="kaizen9/phi-1_5_unspun_teach")
     flash_attention: Optional[bool] = field(default=True)
     config_dtype: Optional[str] = field(default="bfloat16")
 
