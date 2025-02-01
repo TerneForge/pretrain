@@ -38,7 +38,7 @@ class AdamW(Optimizer):
         lr: float = 1e-3,
         betas: Tuple[float, float] = (0.9, 0.999),
         eps: float = 1e-6,
-        weight_decay: float = 0.0,
+        weight_decay: float = 0.01,
         correct_bias: bool = True,
         no_deprecation_warning: bool = False,
     ):

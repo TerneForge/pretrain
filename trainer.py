@@ -121,8 +121,8 @@ class MinimalTrainer(Trainer):
             adamw_params = [p for p in opt_model.model.layers.parameters() if p.ndim < 2]
             adamw_params.extend(opt_model.lm_head.parameters())
             adamw_params.extend(opt_model.model.embed_tokens.parameters())
-            optimizer = Muon(muon_params, lr=1e-3, momentum=0.95,
-                 adamw_params=adamw_params, adamw_lr=3e-4, adamw_betas=(0.90, 0.95), adamw_wd=0.0)
+            optimizer = Muon(muon_params, lr=1e-2, momentum=0.95,
+                 adamw_params=adamw_params, adamw_lr=1e-2, adamw_betas=(0.90, 0.95), adamw_wd=0.0)
             self.optimizer = optimizer
             return self.optimizer
 

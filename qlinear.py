@@ -32,6 +32,7 @@ class QLinear(nn.Linear):
         """
         self.scales = nn.Parameter(torch.ones(self.out_features))
         self.quantizer = modified_weight_quant
+        self.weight.register_hook(self.weight_hook)
 
 
     def forward(self, x):
@@ -52,4 +53,32 @@ class QLinear(nn.Linear):
         if self.bias is not None:
             y = y + self.bias
         return y
+    def weight_hook(self, grad_output):
+        grad = grad_output.clone()  # Preserve original gradients
+    
+        input = self.weight.clone().detach()
+        ternary_values = input.round()  # -1, 0, or +1
+        scale = torch.abs(input - ternary_values)  # Uncertainty measure (0 = certain, 0.5 = maximally uncertain)
+    
+        # 1. Scale gradients by uncertainty (prioritize uncertain weights)
+        grad = grad * scale
+    
+        # 2. Adaptive thresholding (optional but recommended)
+        # if grad.numel() > 1:  # Only apply if there are multiple elements
+        #     threshold = 3 * grad.std()
+        #     grad = grad * (grad.abs() >= threshold)
+    
+        # 3. Gradient clipping to prevent explosions (critical after scaling)
+        # max_value, _ = torch.max(grad)
+        # if max_value > 1:
+        #     max_value = max_value * 0.7
+        #     grad = grad * (1 / max_value)
+        # Normalize grad if norm > 1
+        grad_norm = torch.norm(grad)
+        if grad_norm > 1:
+            grad = grad / grad_norm
+
+    
+        return grad
+    
 

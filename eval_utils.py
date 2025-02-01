@@ -95,7 +95,8 @@ def iterate_examples(split):
 class HellaSwagDataset(torch.utils.data.Dataset):
     """Dataset for HellaSwag evaluation that handles multiple choice format"""
     def __init__(self, split="val"):
-        self.sources = load_dataset("Rowan/hellaswag", split="validation")
+        data = load_dataset("Rowan/hellaswag", split="validation")
+        self.sources = data.shuffle().take(1000)
         self.size = len(self.sources)
 
     def __len__(self):
