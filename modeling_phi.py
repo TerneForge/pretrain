@@ -242,6 +242,9 @@ class PhiDecoderLayer(nn.Module):
         self.mlp = PhiMLP(config)
         self.input_layernorm = LigerLayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
+        self.lerp = nn.Parameter(torch.ones(2))
+        self.gate = nn.Parameter(torch.ones(2))
+        self.init_lerp = nn.Parameter(torch.tensor(0.0))
 
     def forward(
         self,
@@ -255,6 +258,12 @@ class PhiDecoderLayer(nn.Module):
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        
+        if self.init_lerp.data != 1.0:
+            self.lerp.data = torch.ones_like(self.lerp.data, device=self.lerp.device, dtype=self.lerp.data.dtype)
+            self.gate.data = torch.zeros_like(self.gate.data, device=self.gate.device, dtype=self.gate.data.dtype)
+            self.init_lerp.data = torch.tensor(1.0)
+
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
@@ -273,8 +282,8 @@ class PhiDecoderLayer(nn.Module):
         )
         attn_outputs = self.resid_dropout(attn_outputs)
 
-        feed_forward_hidden_states = self.resid_dropout(self.mlp(hidden_states))
-        hidden_states = attn_outputs + feed_forward_hidden_states + residual
+        feed_forward_hidden_states = self.resid_dropout(self.mlp(hidden_states + self.gate[0] * attn_outputs))
+        hidden_states = attn_outputs * self.lerp[0] + feed_forward_hidden_states * self.lerp[1] + residual
         outputs = (hidden_states,)
 
         if output_attentions:

@@ -275,7 +275,7 @@ def train():
     print(training_args.num_epochs_trained_before_this_epoch)
     print(training_args.num_train_epochs)
 
-    assert int(training_args.num_epochs_trained_before_this_epoch) == int(training_args.num_train_epochs - 1), "only allow 1 new epochs"
+    # assert int(training_args.num_epochs_trained_before_this_epoch) == int(training_args.num_train_epochs - 1), "only allow 1 new epochs"
 
     # Log the config
     from pprint import pprint
@@ -373,7 +373,7 @@ def train():
     print(training_args.per_device_train_batch_size)
     print(len(data_module["train_dataset"]) //(WORLD_SIZE * training_args.per_device_train_batch_size))
     print(training_args.gradient_accumulation_steps)
-    training_args.max_steps = training_args.num_steps_trained_before_this_epoch + num_update_steps_per_epoch
+    # training_args.max_steps = training_args.num_steps_trained_before_this_epoch + num_update_steps_per_epoch
 
     model.tokenizer = tokenizer
 
