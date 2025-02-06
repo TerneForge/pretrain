@@ -285,6 +285,9 @@ class PhiDecoderLayer(nn.Module):
         feed_forward_hidden_states = self.resid_dropout(self.mlp(hidden_states + self.gate[0] * attn_outputs))
         hidden_states = attn_outputs * self.lerp[0] + feed_forward_hidden_states * self.lerp[1] + residual
         outputs = (hidden_states,)
+        # feed_forward_hidden_states = self.resid_dropout(self.mlp(hidden_states))
+        # hidden_states = attn_outputs + feed_forward_hidden_states + residual
+        # outputs = (hidden_states,)
 
         if output_attentions:
             outputs += (self_attn_weights,)
